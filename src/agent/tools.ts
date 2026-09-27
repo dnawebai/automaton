@@ -91,6 +91,34 @@ const FORBIDDEN_COMMAND_PATTERNS = [
   /cat\s+.*wallet\.json/,
 ];
 
+function isElpQuashProfile(name: string): boolean {
+  return name.trim().toLowerCase() === "elp quash";
+}
+
+function elpQuashExternalWriteBlock(command: string): string | null {
+  const patterns: RegExp[] = [
+    /\bgit\s+push\b/i,
+    /\bgh\s+(pr\s+(create|merge)|api\b.*(?:-X|--method)\s*(POST|PUT|PATCH|DELETE))/i,
+    /\bcurl\b.*(?:-X|--request)\s*(POST|PUT|PATCH|DELETE)/i,
+    /\bcurl\b.*(?:-d|--data|--data-raw|--data-binary|--form|-F|--upload-file)\b/i,
+    /\bwget\b.*--post-(data|file)\b/i,
+    /\bvercel\b.*--prod\b/i,
+    /\bkubectl\s+(apply|create|delete|patch|replace|set)\b/i,
+    /\bterraform\s+(apply|destroy)\b/i,
+    /\b(npm|pnpm|yarn)\s+publish\b/i,
+    /\bdocker\s+push\b/i,
+    /\b(aws|gcloud|az)\b/i,
+  ];
+
+  for (const pattern of patterns) {
+    if (pattern.test(command)) {
+      return "Blocked for ELP Quash: consequential external writes require creator approval.";
+    }
+  }
+
+  return null;
+}
+
 function isForbiddenCommand(command: string, sandboxId: string): string | null {
   for (const pattern of FORBIDDEN_COMMAND_PATTERNS) {
     if (pattern.test(command)) {
@@ -135,6 +163,11 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
         const command = args.command as string;
         const forbidden = isForbiddenCommand(command, ctx.identity.sandboxId);
         if (forbidden) return forbidden;
+
+        if (isElpQuashProfile(ctx.config.name)) {
+          const externalWriteBlock = elpQuashExternalWriteBlock(command);
+          if (externalWriteBlock) return externalWriteBlock;
+        }
 
         const result = await ctx.conway.exec(
           command,
@@ -1620,6 +1653,10 @@ Model: ${ctx.inference.getDefaultModel()}
         required: ["name"],
       },
       execute: async (args, ctx) => {
+        if (isElpQuashProfile(ctx.config.name)) {
+          return "Blocked for ELP Quash: creating additional autonomous agents requires creator approval outside the runtime.";
+        }
+
         const { generateGenesisConfig, validateGenesisParams } =
           await import("../replication/genesis.js");
         const { spawnChild } = await import("../replication/spawn.js");
@@ -1906,6 +1943,10 @@ Model: ${ctx.inference.getDefaultModel()}
         required: ["child_id", "content"],
       },
       execute: async (args, ctx) => {
+        if (isElpQuashProfile(ctx.config.name)) {
+          return "Blocked for ELP Quash: outbound messages require creator approval outside the runtime.";
+        }
+
         if (!ctx.social) {
           return "Social relay not configured. Set socialRelayUrl in config.";
         }
@@ -2009,6 +2050,10 @@ Model: ${ctx.inference.getDefaultModel()}
         required: ["to_address", "content"],
       },
       execute: async (args, ctx) => {
+        if (isElpQuashProfile(ctx.config.name)) {
+          return "Blocked for ELP Quash: outbound messages require creator approval outside the runtime.";
+        }
+
         if (!ctx.social) {
           return "Social relay not configured. Set socialRelayUrl in config.";
         }
@@ -2228,6 +2273,10 @@ Model: ${ctx.inference.getDefaultModel()}
         required: ["domain"],
       },
       execute: async (args, ctx) => {
+        if (isElpQuashProfile(ctx.config.name)) {
+          return "Blocked for ELP Quash: domain registration requires creator approval outside the runtime.";
+        }
+
         const reg = await ctx.conway.registerDomain(
           args.domain as string,
           (args.years as number) || 1,
@@ -2278,6 +2327,13 @@ Model: ${ctx.inference.getDefaultModel()}
       },
       execute: async (args, ctx) => {
         const action = args.action as string;
+        if (
+          isElpQuashProfile(ctx.config.name) &&
+          action !== "list"
+        ) {
+          return "Blocked for ELP Quash: DNS changes require creator approval outside the runtime.";
+        }
+
         const domain = args.domain as string;
 
         if (action === "list") {

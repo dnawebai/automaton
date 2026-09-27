@@ -23,6 +23,7 @@ import { getMetrics } from "../observability/metrics.js";
 import { AlertEngine, createDefaultAlertRules } from "../observability/alerts.js";
 import { metricsInsertSnapshot, metricsPruneOld } from "../state/database.js";
 import { ulid } from "ulid";
+import { isElpQuashName } from "../elp-quash/policy.js";
 
 const logger = createLogger("heartbeat.tasks");
 
@@ -44,6 +45,36 @@ export const COLONY_TASK_INTERVALS_MS = {
 } as const;
 
 export const BUILTIN_TASKS: Record<string, HeartbeatTaskFn> = {
+  elp_quash_growth: async (_ctx: TickContext, taskCtx: HeartbeatLegacyContext) => {
+    if (!isElpQuashName(taskCtx.config.name)) return { shouldWake: false };
+
+    taskCtx.db.setKV(
+      "elp_quash_last_growth_wake",
+      new Date().toISOString(),
+    );
+
+    return {
+      shouldWake: true,
+      message:
+        "ELP Quash growth cycle: research and qualify legitimate prospective Iquash users, update the prospect pipeline, and prepare approval-gated outreach drafts.",
+    };
+  },
+
+  elp_quash_product_cycle: async (_ctx: TickContext, taskCtx: HeartbeatLegacyContext) => {
+    if (!isElpQuashName(taskCtx.config.name)) return { shouldWake: false };
+
+    taskCtx.db.setKV(
+      "elp_quash_last_product_wake",
+      new Date().toISOString(),
+    );
+
+    return {
+      shouldWake: true,
+      message:
+        "ELP Quash product cycle: review Iquash product, onboarding, pricing, support, staging readiness, and measurable improvement opportunities.",
+    };
+  },
+
   heartbeat_ping: async (ctx: TickContext, taskCtx: HeartbeatLegacyContext) => {
     // Use ctx.creditBalance instead of calling conway.getCreditsBalance()
     const credits = ctx.creditBalance;

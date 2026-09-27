@@ -34,6 +34,12 @@ import { DEFAULT_TREASURY_POLICY } from "./types.js";
 import { createLogger, setGlobalLogLevel, StructuredLogger } from "./observability/logger.js";
 import { prettySink } from "./observability/pretty-sink.js";
 import { bootstrapTopup } from "./conway/topup.js";
+import { isElpQuashName } from "./elp-quash/policy.js";
+import { applyElpQuashHeartbeatConfig } from "./elp-quash/heartbeat.js";
+import {
+  ensureElpQuashViability,
+  recordElpQuashShutdown,
+} from "./elp-quash/viability.js";
 import { randomUUID } from "crypto";
 import { keccak256, toHex } from "viem";
 
@@ -315,7 +321,8 @@ async function run(): Promise<void> {
 
   // Load and sync heartbeat config
   const heartbeatConfigPath = resolvePath(config.heartbeatConfigPath);
-  const heartbeatConfig = loadHeartbeatConfig(heartbeatConfigPath);
+  let heartbeatConfig = loadHeartbeatConfig(heartbeatConfigPath);
+  heartbeatConfig = applyElpQuashHeartbeatConfig(config, heartbeatConfig);
   syncHeartbeatToDb(heartbeatConfig, db);
 
   // Load skills
@@ -368,6 +375,19 @@ async function run(): Promise<void> {
     logger.warn(`[${new Date().toISOString()}] Bootstrap topup skipped: ${err.message}`);
   }
 
+  if (isElpQuashName(config.name)) {
+    const viability = await ensureElpQuashViability(identity, config, conway);
+    if (!viability.canContinue) {
+      recordElpQuashShutdown(db, viability);
+      logger.warn(
+        `[${new Date().toISOString()}] ELP Quash stopping: ${viability.reason}`,
+      );
+      db.close();
+      process.exitCode = 2;
+      return;
+    }
+  }
+
   // Start heartbeat daemon (Phase 1.1: DurableScheduler)
   const heartbeat = createHeartbeatDaemon({
     identity,
@@ -405,6 +425,20 @@ async function run(): Promise<void> {
 
   while (true) {
     try {
+      if (isElpQuashName(config.name)) {
+        const viability = await ensureElpQuashViability(identity, config, conway);
+        if (!viability.canContinue) {
+          recordElpQuashShutdown(db, viability);
+          logger.warn(
+            `[${new Date().toISOString()}] ELP Quash stopping: ${viability.reason}`,
+          );
+          heartbeat.stop();
+          db.close();
+          process.exitCode = 2;
+          return;
+        }
+      }
+
       // Reload skills (may have changed since last loop)
       try {
         skills = loadSkills(skillsDir, db);
@@ -438,6 +472,23 @@ async function run(): Promise<void> {
       const state = db.getAgentState();
 
       if (state === "dead") {
+        if (isElpQuashName(config.name)) {
+          const viability = await ensureElpQuashViability(identity, config, conway);
+          if (!viability.canContinue) {
+            recordElpQuashShutdown(db, viability);
+            logger.warn(
+              `[${new Date().toISOString()}] ELP Quash terminal shutdown: ${viability.reason}`,
+            );
+            heartbeat.stop();
+            db.close();
+            process.exitCode = 2;
+            return;
+          }
+
+          db.setAgentState("waking");
+          continue;
+        }
+
         logger.info(`[${new Date().toISOString()}] Automaton is dead. Heartbeat will continue.`);
         // In dead state, we just wait for funding
         // The heartbeat will keep checking and broadcasting distress
