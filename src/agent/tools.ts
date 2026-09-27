@@ -2273,6 +2273,10 @@ Model: ${ctx.inference.getDefaultModel()}
         required: ["domain"],
       },
       execute: async (args, ctx) => {
+        if (isElpQuashProfile(ctx.config.name)) {
+          return "Blocked for ELP Quash: domain registration requires creator approval outside the runtime.";
+        }
+
         const reg = await ctx.conway.registerDomain(
           args.domain as string,
           (args.years as number) || 1,
@@ -2323,6 +2327,13 @@ Model: ${ctx.inference.getDefaultModel()}
       },
       execute: async (args, ctx) => {
         const action = args.action as string;
+        if (
+          isElpQuashProfile(ctx.config.name) &&
+          action !== "list"
+        ) {
+          return "Blocked for ELP Quash: DNS changes require creator approval outside the runtime.";
+        }
+
         const domain = args.domain as string;
 
         if (action === "list") {
