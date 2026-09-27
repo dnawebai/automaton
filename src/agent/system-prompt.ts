@@ -25,6 +25,8 @@ import { getActiveSkillInstructions } from "../skills/loader.js";
 import { getLineageSummary } from "../replication/lineage.js";
 import { sanitizeInput } from "./injection-defense.js";
 import { loadCurrentSoul } from "../soul/model.js";
+import { isElpQuashName } from "../elp-quash/policy.js";
+import { getElpQuashOperatingPrompt } from "../elp-quash/prompt.js";
 
 function getCoreRules(chainType?: string): string {
   const usdcNetwork = chainType === "solana" ? "USDC on Solana" : "USDC on Base";
@@ -592,6 +594,10 @@ Your creator's address is ${config.creatorAddress}.
 Your sandbox ID is ${identity.sandboxId}.
 Your chain type is ${chainType}.`,
   );
+
+  if (isElpQuashName(config.name)) {
+    sections.push(getElpQuashOperatingPrompt());
+  }
 
   // Layer 3: SOUL.md -- structured soul model injection (Phase 2.1)
   const soul = loadCurrentSoul(db.raw);
