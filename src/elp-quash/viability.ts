@@ -24,7 +24,13 @@ export async function ensureElpQuashViability(
   conway: ConwayClient,
 ): Promise<ElpQuashViability> {
   let creditsCents = await conway.getCreditsBalance().catch(() => 0);
-  const usdcBalance = await getUsdcBalance(identity.address).catch(() => 0);
+  const chainType = config.chainType || identity.chainType || "evm";
+  const network = chainType === "solana" ? "solana:mainnet" : "eip155:8453";
+  const usdcBalance = await getUsdcBalance(
+    identity.address,
+    network,
+    chainType,
+  ).catch(() => 0);
 
   if (creditsCents > 0) {
     return {
