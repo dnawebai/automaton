@@ -2050,6 +2050,10 @@ Model: ${ctx.inference.getDefaultModel()}
         required: ["to_address", "content"],
       },
       execute: async (args, ctx) => {
+        if (isElpQuashProfile(ctx.config.name)) {
+          return "Blocked for ELP Quash: outbound messages require creator approval outside the runtime.";
+        }
+
         if (!ctx.social) {
           return "Social relay not configured. Set socialRelayUrl in config.";
         }
